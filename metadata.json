@@ -1,0 +1,5 @@
+{
+  "name": "Barcelona Trip Brain",
+  "description": "A collaborative trip planner for Barcelona with AI-powered itinerary generation, cost tracking, and role assignment.",
+  "requestFramePermissions": []
+}
