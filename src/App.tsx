@@ -32,7 +32,7 @@ export default function App() {
   const [modalItem, setModalItem] = useState<TripItem | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingEvent, setEditingEvent] = useState<{ dayIdx: number, eventIdx: number } | null>(null);
-  const [activeTab, setActiveTab] = useState<'draft' | 'planner' | 'summary' | 'costs'>('draft');
+  const [activeTab, setActiveTab] = useState<'draft' | 'planner' | 'summary' | 'costs' | 'final'>('draft');
 
   useEffect(() => {
     fetchItems();
@@ -183,7 +183,7 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight">Barcelona Trip Brain</h1>
           </div>
           <nav className="flex gap-1 bg-stone-100 p-1 rounded-lg">
-            {(['draft', 'planner', 'summary', 'costs'] as const).map((tab) => (
+            {(['draft', 'planner', 'summary', 'costs', 'final'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -193,7 +193,7 @@ export default function App() {
                     : 'text-stone-500 hover:text-stone-700'
                 }`}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'final' ? 'Final.final' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </nav>
@@ -577,6 +577,89 @@ export default function App() {
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Final.final Tab */}
+        {activeTab === 'final' && (
+          <div className="space-y-12">
+            <div className="flex justify-between items-end">
+              <div>
+                <h2 className="text-4xl font-black tracking-tighter uppercase italic">Final.final</h2>
+                <p className="text-stone-500 font-mono text-xs">LOCKED • READ-ONLY DASHBOARD</p>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-bold text-stone-400 uppercase tracking-widest">Barcelona Trip</div>
+                <div className="text-lg font-mono">{config.startDate} — {config.endDate}</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {/* Group items by date for a calendar feel */}
+              {Array.from(new Set(items.filter(i => i.chosen).map(i => i.date || 'TBD'))).sort().map(date => (
+                <div key={date as string} className="space-y-4">
+                  <div className="flex items-center gap-2 border-b border-stone-900 pb-2">
+                    <span className="text-3xl font-black italic">{(date as string).split('-')[2] || '??'}</span>
+                    <div className="leading-none">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400">
+                        {new Date(date as string).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      </div>
+                      <div className="text-xs font-bold uppercase">{new Date(date as string).toLocaleDateString('en-US', { weekday: 'long' })}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {items.filter(i => i.chosen && (i.date || 'TBD') === date).sort((a, b) => (a.time || '').localeCompare(b.time || '')).map(item => (
+                      <div key={item.id} className="bg-white border border-stone-200 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-[10px] font-mono text-stone-400">{item.time || '--:--'}</span>
+                          <div className={`w-2 h-2 rounded-full ${
+                            item.type === 'hotel' ? 'bg-blue-500' : 
+                            item.type === 'activity' ? 'bg-emerald-500' : 'bg-orange-100 bg-orange-500'
+                          }`} />
+                        </div>
+                        <h4 className="font-bold text-sm leading-tight mb-1">{item.name}</h4>
+                        <p className="text-[10px] text-stone-500 line-clamp-2 mb-3">{item.notes}</p>
+                        <div className="flex justify-between items-center border-t border-stone-50 pt-2">
+                          <span className="text-[9px] font-bold uppercase tracking-tighter text-stone-400 flex items-center gap-1">
+                            <User size={10} /> {item.role || 'Team'}
+                          </span>
+                          <span className="text-[10px] font-mono font-bold">€{item.cost}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {items.filter(i => i.chosen).length === 0 && (
+              <div className="text-center py-32 border-2 border-dashed border-stone-200 rounded-3xl">
+                <p className="text-stone-400 font-mono italic">The board is empty. Finalize your choices in the Summary tab.</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-12 border-t border-stone-200">
+              <div className="bg-stone-900 text-white p-6 rounded-2xl">
+                <h5 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">Total Budget Used</h5>
+                <div className="text-3xl font-black italic">€{totalCost}</div>
+                <div className="text-[10px] text-stone-500 mt-2">Target: €{config.budget}</div>
+              </div>
+              <div className="bg-white border border-stone-200 p-6 rounded-2xl">
+                <h5 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">Items Confirmed</h5>
+                <div className="text-3xl font-black italic">{items.filter(i => i.chosen).length}</div>
+                <div className="text-[10px] text-stone-500 mt-2">Ready for booking</div>
+              </div>
+              <div className="bg-white border border-stone-200 p-6 rounded-2xl">
+                <h5 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">Trip Duration</h5>
+                <div className="text-3xl font-black italic">
+                  {config.startDate && config.endDate ? 
+                    Math.ceil((new Date(config.endDate).getTime() - new Date(config.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1 : 
+                    '--'
+                  } Days
+                </div>
+                <div className="text-[10px] text-stone-500 mt-2">Barcelona, Spain</div>
+              </div>
             </div>
           </div>
         )}
