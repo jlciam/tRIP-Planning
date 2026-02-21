@@ -236,7 +236,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Budget (€)</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Budget ($)</label>
                   <input 
                     type="text" 
                     placeholder="e.g. 1500"
@@ -286,6 +286,12 @@ export default function App() {
                         </div>
                         <div className="flex gap-1">
                           <button 
+                            onClick={() => setModalItem(item)}
+                            className="p-2 bg-stone-100 text-stone-400 rounded-lg hover:text-stone-600 transition-colors"
+                          >
+                            <MessageSquare size={18} />
+                          </button>
+                          <button 
                             onClick={() => toggleChosen(item)}
                             className={`p-2 rounded-lg transition-colors ${item.chosen ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-400 hover:text-stone-600'}`}
                           >
@@ -321,7 +327,7 @@ export default function App() {
                           <User size={12} /> {item.role || 'Unassigned'}
                         </span>
                         <span className="flex items-center gap-1 text-xs font-medium text-stone-400">
-                          <Euro size={12} /> {item.cost}
+                          <Euro size={12} /> ${item.cost}
                         </span>
                       </div>
                     </motion.div>
@@ -501,7 +507,7 @@ export default function App() {
                       <div className="flex gap-3 text-xs text-stone-500">
                         <span className="flex items-center gap-1"><Calendar size={12} /> {item.date || 'TBD'}</span>
                         <span className="flex items-center gap-1"><User size={12} /> {item.role || 'Unassigned'}</span>
-                        <span className="flex items-center gap-1"><Euro size={12} /> {item.cost}</span>
+                        <span className="flex items-center gap-1"><Euro size={12} /> ${item.cost}</span>
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -524,14 +530,14 @@ export default function App() {
               <div className="space-y-6">
                 <div className="bg-stone-900 text-white p-8 rounded-3xl">
                   <h3 className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-2">Total Estimated Cost</h3>
-                  <div className="text-4xl font-bold mb-4">€{totalCost}</div>
+                  <div className="text-4xl font-bold mb-4">${totalCost}</div>
                   <div className="h-1 bg-white/10 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-emerald-400 transition-all duration-1000" 
                       style={{ width: `${Math.min((totalCost / (Number(config.budget) || 1)) * 100, 100)}%` }}
                     />
                   </div>
-                  <p className="text-xs text-stone-400 mt-2">Budget: €{config.budget || '?'}</p>
+                  <p className="text-xs text-stone-400 mt-2">Budget: ${config.budget || '?'}</p>
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl border border-stone-200">
@@ -567,7 +573,7 @@ export default function App() {
                     <th className="p-4 text-xs font-bold uppercase tracking-widest text-stone-400">Item</th>
                     <th className="p-4 text-xs font-bold uppercase tracking-widest text-stone-400">Type</th>
                     <th className="p-4 text-xs font-bold uppercase tracking-widest text-stone-400">Responsible</th>
-                    <th className="p-4 text-xs font-bold uppercase tracking-widest text-stone-400 text-right">Cost (€)</th>
+                    <th className="p-4 text-xs font-bold uppercase tracking-widest text-stone-400 text-right">Cost ($)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -583,12 +589,12 @@ export default function App() {
                         </span>
                       </td>
                       <td className="p-4 text-stone-500">{item.role || '-'}</td>
-                      <td className="p-4 text-right font-mono">€{item.cost.toFixed(2)}</td>
+                      <td className="p-4 text-right font-mono">${item.cost.toFixed(2)}</td>
                     </tr>
                   ))}
                   <tr className="bg-stone-900 text-white font-bold">
                     <td colSpan={3} className="p-4 text-right">Total Trip Cost</td>
-                    <td className="p-4 text-right font-mono text-xl">€{totalCost.toFixed(2)}</td>
+                    <td className="p-4 text-right font-mono text-xl">${totalCost.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -639,7 +645,7 @@ export default function App() {
                           <span className="text-[9px] font-bold uppercase tracking-tighter text-stone-400 flex items-center gap-1">
                             <User size={10} /> {item.role || 'Team'}
                           </span>
-                          <span className="text-[10px] font-mono font-bold">€{item.cost}</span>
+                          <span className="text-[10px] font-mono font-bold">${item.cost}</span>
                         </div>
                       </div>
                     ))}
@@ -657,8 +663,8 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-12 border-t border-stone-200">
               <div className="bg-stone-900 text-white p-6 rounded-2xl">
                 <h5 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">Total Budget Used</h5>
-                <div className="text-3xl font-black italic">€{totalCost}</div>
-                <div className="text-[10px] text-stone-500 mt-2">Target: €{config.budget}</div>
+                <div className="text-3xl font-black italic">${totalCost}</div>
+                <div className="text-[10px] text-stone-500 mt-2">Target: ${config.budget}</div>
               </div>
               <div className="bg-white border border-stone-200 p-6 rounded-2xl">
                 <h5 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">Items Confirmed</h5>
@@ -748,7 +754,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Cost (€)</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Cost ($)</label>
                     <input 
                       type="number" 
                       value={modalItem.cost}
@@ -801,7 +807,7 @@ export default function App() {
 
       {/* Print Only View */}
       <div className="hidden print-only p-8">
-        <h1 className="text-4xl font-bold mb-2">Barcelona Trip Itinerary</h1>
+        <h1 className="text-4xl font-bold mb-2">tRIP Planner Itinerary</h1>
         <p className="text-stone-500 mb-8">{config.startDate} to {config.endDate}</p>
         <div className="space-y-8">
           {itineraryData.map((day: any, idx: number) => (
