@@ -103,13 +103,13 @@ export default function App() {
     try {
       const chosenItems = items.filter(i => i.chosen);
       const prompt = `
-        We are planning a trip to Barcelona from ${config.startDate || 'unknown'} to ${config.endDate || 'unknown'}.
+        We are planning a trip to ${config.location || 'Barcelona'} from ${config.startDate || 'unknown'} to ${config.endDate || 'unknown'}.
         Our budget is ${config.budget || 'flexible'}.
         We have already chosen these items:
-        ${JSON.stringify(chosenItems.map(i => ({ name: i.name, type: i.type, notes: i.notes })))}
+        ${JSON.stringify(chosenItems.map(i => ({ name: i.name, type: i.type, notes: i.notes, location: i.location })))}
         
-        Please create a detailed daily itinerary. 
-        Fill in gaps with authentic Barcelona suggestions (hidden gems, local favorites).
+        Please create a detailed daily itinerary for ${config.location || 'Barcelona'}. 
+        Fill in gaps with authentic suggestions (hidden gems, local favorites) specifically for ${config.location || 'Barcelona'}.
         Ensure a good mix of activities, rest, and dining.
         Format the response as a JSON array of days, where each day has a date and a list of events with time, activity, and type (hotel, activity, eating).
       `;
@@ -180,7 +180,7 @@ export default function App() {
             <div className="w-10 h-10 bg-stone-900 rounded-xl flex items-center justify-center text-white">
               <Sparkles size={24} />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">Barcelona Trip Brain</h1>
+            <h1 className="text-xl font-bold tracking-tight">tRIP Planner</h1>
           </div>
           <nav className="flex gap-1 bg-stone-100 p-1 rounded-lg">
             {(['draft', 'planner', 'summary', 'costs', 'final'] as const).map((tab) => (
@@ -206,7 +206,17 @@ export default function App() {
           <div className="space-y-8">
             <section className="bg-white rounded-3xl p-8 border border-stone-200 shadow-sm">
               <h2 className="text-2xl font-bold mb-6">Trip Setup</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Destination</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Barcelona"
+                    value={config.location || ''} 
+                    onChange={(e) => saveConfig('location', e.target.value)}
+                    className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Start Date</label>
                   <input 
@@ -290,6 +300,11 @@ export default function App() {
                         </div>
                       </div>
                       <h3 className="text-lg font-bold mb-2">{item.name}</h3>
+                      {item.location && (
+                        <p className="text-xs font-medium text-stone-400 mb-2 flex items-center gap-1">
+                          <MapPin size={12} /> {item.location}
+                        </p>
+                      )}
                       <p className="text-stone-500 text-sm mb-4 line-clamp-2">{item.notes}</p>
                       <div className="flex flex-wrap gap-2 mt-auto">
                         {item.date && (
@@ -323,7 +338,7 @@ export default function App() {
             <div className="flex justify-between items-center no-print">
               <div>
                 <h2 className="text-3xl font-bold">Master Itinerary</h2>
-                <p className="text-stone-500">Your AI-optimized schedule for Barcelona.</p>
+                <p className="text-stone-500">Your AI-optimized schedule for Barcelona trip.</p>
               </div>
               <div className="flex gap-2">
                 <button 
@@ -701,6 +716,16 @@ export default function App() {
                     onChange={(e) => setModalItem({ ...modalItem, name: e.target.value })}
                     className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
                     placeholder="e.g. Hotel Arts Barcelona"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Location (Optional)</label>
+                  <input 
+                    type="text" 
+                    value={modalItem.location || ''}
+                    onChange={(e) => setModalItem({ ...modalItem, location: e.target.value })}
+                    className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
+                    placeholder="Specific address or area"
                   />
                 </div>
                 <div>

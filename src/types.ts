@@ -11,10 +11,12 @@ export interface TripItem {
   chosen: boolean;
   date?: string;
   time?: string;
+  location?: string;
 }
 
 export interface TripConfig {
   startDate?: string;
   endDate?: string;
   budget?: string;
+  location?: string;
 }
