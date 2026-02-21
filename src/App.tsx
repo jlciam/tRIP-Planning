@@ -29,18 +29,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 export default function App() {
   const [items, setItems] = useState<TripItem[]>([]);
   const [config, setConfig] = useState<TripConfig>({});
-  const [isAdding, setIsAdding] = useState<ItemType | null>(null);
+  const [modalItem, setModalItem] = useState<TripItem | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'draft' | 'summary' | 'planner' | 'costs'>('draft');
-
-  // Form state
-  const [newItem, setNewItem] = useState<Partial<TripItem>>({
-    name: '',
-    notes: '',
-    link: '',
-    role: '',
-    cost: 0,
-  });
+  const [editingEvent, setEditingEvent] = useState<{ dayIdx: number, eventIdx: number } | null>(null);
+  const [activeTab, setActiveTab] = useState<'draft' | 'planner' | 'summary' | 'costs'>('draft');
 
   useEffect(() => {
     fetchItems();
@@ -90,21 +82,16 @@ export default function App() {
     });
   };
 
-  const handleAddItem = () => {
-    if (!newItem.name || !isAdding) return;
-    const item: TripItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      type: isAdding,
-      name: newItem.name || '',
-      notes: newItem.notes || '',
-      link: newItem.link || '',
-      role: newItem.role || '',
-      cost: Number(newItem.cost) || 0,
-      chosen: false,
+  const handleSaveModalItem = async () => {
+    if (!modalItem || !modalItem.name) return;
+    
+    const itemToSave = {
+      ...modalItem,
+      id: modalItem.id || Math.random().toString(36).substr(2, 9),
     };
-    saveItem(item);
-    setNewItem({ name: '', notes: '', link: '', role: '', cost: 0 });
-    setIsAdding(null);
+
+    await saveItem(itemToSave);
+    setModalItem(null);
   };
 
   const toggleChosen = (item: TripItem) => {
@@ -196,7 +183,7 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight">Barcelona Trip Brain</h1>
           </div>
           <nav className="flex gap-1 bg-stone-100 p-1 rounded-lg">
-            {(['draft', 'summary', 'planner', 'costs'] as const).map((tab) => (
+            {(['draft', 'planner', 'summary', 'costs'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -258,13 +245,13 @@ export default function App() {
                   <p className="text-stone-500">Add ideas for hotels, things to do, and places to eat.</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setIsAdding('hotel')} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                  <button onClick={() => setModalItem({ id: '', type: 'hotel', name: '', notes: '', link: '', role: '', cost: 0, chosen: false, date: '' })} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
                     <Plus size={18} /> Hotel
                   </button>
-                  <button onClick={() => setIsAdding('activity')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors">
+                  <button onClick={() => setModalItem({ id: '', type: 'activity', name: '', notes: '', link: '', role: '', cost: 0, chosen: false, date: '' })} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors">
                     <Plus size={18} /> Activity
                   </button>
-                  <button onClick={() => setIsAdding('eating')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
+                  <button onClick={() => setModalItem({ id: '', type: 'eating', name: '', notes: '', link: '', role: '', cost: 0, chosen: false, date: '' })} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
                     <Plus size={18} /> Eating
                   </button>
                 </div>
@@ -305,6 +292,11 @@ export default function App() {
                       <h3 className="text-lg font-bold mb-2">{item.name}</h3>
                       <p className="text-stone-500 text-sm mb-4 line-clamp-2">{item.notes}</p>
                       <div className="flex flex-wrap gap-2 mt-auto">
+                        {item.date && (
+                          <span className="flex items-center gap-1 text-xs font-medium text-stone-400">
+                            <Calendar size={12} /> {item.date}
+                          </span>
+                        )}
                         {item.link && (
                           <a href={item.link} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
                             <ExternalLink size={12} /> Link
@@ -325,6 +317,150 @@ export default function App() {
           </div>
         )}
 
+        {/* Planner Tab */}
+        {activeTab === 'planner' && (
+          <div className="space-y-8">
+            <div className="flex justify-between items-center no-print">
+              <div>
+                <h2 className="text-3xl font-bold">Master Itinerary</h2>
+                <p className="text-stone-500">Your AI-optimized schedule for Barcelona.</p>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={generateItinerary}
+                  disabled={isGenerating}
+                  className="flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-xl hover:bg-stone-800 transition-colors disabled:opacity-50"
+                >
+                  <Sparkles size={18} /> {isGenerating ? 'Generating...' : 'Re-Generate AI Plan'}
+                </button>
+                <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 transition-colors">
+                  <Printer size={18} /> Print Timeline
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-12 relative">
+              {/* Vertical Line */}
+              <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-stone-200 hidden md:block" />
+
+              {itineraryData.map((day: any, idx: number) => (
+                <div key={idx} className="relative">
+                  <div className="md:ml-20 mb-6">
+                    <h3 className="text-xl font-bold bg-stone-900 text-white inline-block px-4 py-1 rounded-lg shadow-lg">
+                      {day.date}
+                    </h3>
+                  </div>
+                  <div className="space-y-6">
+                    {day.events.map((event: any, eIdx: number) => {
+                      const existingItem = items.find(i => i.name === event.activity);
+                      return (
+                        <div key={eIdx} className="flex flex-col md:flex-row gap-4 md:gap-12 items-start">
+                          <div className="w-20 text-right font-mono text-sm text-stone-400 pt-4 hidden md:block">
+                            {event.time}
+                          </div>
+                          <div className={`flex-1 bg-white p-6 rounded-2xl border shadow-sm relative transition-all ${existingItem?.chosen ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-stone-200'}`}>
+                            {/* Dot on line */}
+                            <div className={`absolute -left-[53px] top-8 w-4 h-4 rounded-full border-4 border-stone-50 hidden md:block ${
+                              event.type === 'hotel' ? 'bg-blue-500' : 
+                              event.type === 'activity' ? 'bg-emerald-500' : 'bg-orange-500'
+                            }`} />
+                            
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex-1">
+                                {editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? (
+                                  <div className="space-y-2 mb-2">
+                                    <input 
+                                      type="text" 
+                                      value={event.activity} 
+                                      onChange={(e) => {
+                                        const newItinerary = [...itineraryData];
+                                        newItinerary[idx].events[eIdx].activity = e.target.value;
+                                        saveConfig('itinerary', JSON.stringify(newItinerary));
+                                      }}
+                                      className="w-full p-1 text-lg font-bold border-b border-stone-300 outline-none"
+                                    />
+                                    <input 
+                                      type="text" 
+                                      value={event.time} 
+                                      onChange={(e) => {
+                                        const newItinerary = [...itineraryData];
+                                        newItinerary[idx].events[eIdx].time = e.target.value;
+                                        saveConfig('itinerary', JSON.stringify(newItinerary));
+                                      }}
+                                      className="w-full p-1 text-xs font-mono border-b border-stone-300 outline-none"
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    <h4 className="text-lg font-bold">{event.activity}</h4>
+                                    <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded ${
+                                      event.type === 'hotel' ? 'bg-blue-100 text-blue-600' : 
+                                      event.type === 'activity' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
+                                    }`}>
+                                      {event.type}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => setEditingEvent(editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? null : { dayIdx: idx, eventIdx: eIdx })}
+                                  className={`p-1 transition-colors ${editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? 'text-emerald-600' : 'text-stone-300 hover:text-stone-600'}`}
+                                >
+                                  {editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? <CheckCircle2 size={16} /> : <MessageSquare size={16} />}
+                                </button>
+                                <button 
+                                  onClick={() => setModalItem(existingItem || {
+                                    id: '',
+                                    type: event.type as ItemType,
+                                    name: event.activity,
+                                    notes: event.description,
+                                    link: '',
+                                    role: '',
+                                    cost: 0,
+                                    chosen: true,
+                                    date: day.date,
+                                    time: event.time
+                                  })}
+                                  className={`p-1 transition-colors ${existingItem?.chosen ? 'text-emerald-600' : 'text-stone-300 hover:text-stone-600'}`}
+                                >
+                                  {existingItem?.chosen ? <CheckCircle2 size={16} /> : <Plus size={16} />}
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    const newItinerary = [...itineraryData];
+                                    newItinerary[idx].events.splice(eIdx, 1);
+                                    if (newItinerary[idx].events.length === 0) newItinerary.splice(idx, 1);
+                                    saveConfig('itinerary', JSON.stringify(newItinerary));
+                                  }}
+                                  className="p-1 text-stone-300 hover:text-red-500 transition-colors"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-stone-500 text-sm">{event.description}</p>
+                            <div className="md:hidden mt-2 font-mono text-xs text-stone-400">
+                              {event.time}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              
+              {itineraryData.length === 0 && (
+                <div className="text-center py-24">
+                  <Sparkles size={48} className="mx-auto text-stone-200 mb-4" />
+                  <p className="text-stone-400">No itinerary generated yet. Click "Re-Generate AI Plan" to get started!</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Summary Tab */}
         {activeTab === 'summary' && (
           <div className="space-y-8">
@@ -333,19 +469,12 @@ export default function App() {
                 <h2 className="text-3xl font-bold">Trip Summary</h2>
                 <p className="text-stone-500">Overview of chosen items and ready to finalize.</p>
               </div>
-              <button 
-                onClick={generateItinerary}
-                disabled={isGenerating || items.filter(i => i.chosen).length === 0}
-                className="flex items-center gap-2 px-8 py-4 bg-stone-900 text-white rounded-2xl font-bold hover:bg-stone-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-stone-200"
-              >
-                {isGenerating ? 'Generating...' : <><Sparkles size={20} /> Finalize Trip Planner</>}
-              </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Chosen Items</h3>
-                {items.filter(i => i.chosen).map((item) => (
+                <h3 className="text-sm font-bold uppercase tracking-widest text-stone-400">Finalized Items</h3>
+                {items.filter(i => i.chosen).sort((a, b) => (a.date || '').localeCompare(b.date || '')).map((item) => (
                   <div key={item.id} className="bg-white p-4 rounded-xl border border-stone-200 flex items-center gap-4">
                     <div className={`w-10 h-10 flex-shrink-0 flex items-center justify-center ${getItemStyle(item.type)}`}>
                       {item.type === 'hotel' && <Calendar size={16} />}
@@ -354,16 +483,25 @@ export default function App() {
                     </div>
                     <div className="flex-1">
                       <h4 className="font-bold">{item.name}</h4>
-                      <p className="text-xs text-stone-500">{item.role} • €{item.cost}</p>
+                      <div className="flex gap-3 text-xs text-stone-500">
+                        <span className="flex items-center gap-1"><Calendar size={12} /> {item.date || 'TBD'}</span>
+                        <span className="flex items-center gap-1"><User size={12} /> {item.role || 'Unassigned'}</span>
+                        <span className="flex items-center gap-1"><Euro size={12} /> {item.cost}</span>
+                      </div>
                     </div>
-                    <button onClick={() => toggleChosen(item)} className="text-stone-300 hover:text-red-500">
-                      <Trash2 size={18} />
-                    </button>
+                    <div className="flex gap-1">
+                      <button onClick={() => setModalItem(item)} className="p-2 text-stone-300 hover:text-stone-600 transition-colors">
+                        <MessageSquare size={18} />
+                      </button>
+                      <button onClick={() => toggleChosen(item)} className="p-2 text-stone-300 hover:text-red-500 transition-colors">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {items.filter(i => i.chosen).length === 0 && (
                   <div className="text-center py-12 bg-stone-100 rounded-3xl border-2 border-dashed border-stone-200">
-                    <p className="text-stone-400">No items chosen yet. Go back to Draft to select your favorites!</p>
+                    <p className="text-stone-400">No items chosen yet. Go to Planner to select your favorites!</p>
                   </div>
                 )}
               </div>
@@ -395,73 +533,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Planner Tab */}
-        {activeTab === 'planner' && (
-          <div className="space-y-8">
-            <div className="flex justify-between items-center no-print">
-              <div>
-                <h2 className="text-3xl font-bold">Master Itinerary</h2>
-                <p className="text-stone-500">Your AI-optimized schedule for Barcelona.</p>
-              </div>
-              <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 transition-colors">
-                <Printer size={18} /> Print Timeline
-              </button>
-            </div>
-
-            <div className="space-y-12 relative">
-              {/* Vertical Line */}
-              <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-stone-200 hidden md:block" />
-
-              {itineraryData.map((day: any, idx: number) => (
-                <div key={idx} className="relative">
-                  <div className="md:ml-20 mb-6">
-                    <h3 className="text-xl font-bold bg-stone-900 text-white inline-block px-4 py-1 rounded-lg shadow-lg">
-                      {day.date}
-                    </h3>
-                  </div>
-                  <div className="space-y-6">
-                    {day.events.map((event: any, eIdx: number) => (
-                      <div key={eIdx} className="flex flex-col md:flex-row gap-4 md:gap-12 items-start">
-                        <div className="w-20 text-right font-mono text-sm text-stone-400 pt-4 hidden md:block">
-                          {event.time}
-                        </div>
-                        <div className="flex-1 bg-white p-6 rounded-2xl border border-stone-200 shadow-sm relative">
-                          {/* Dot on line */}
-                          <div className={`absolute -left-[53px] top-8 w-4 h-4 rounded-full border-4 border-stone-50 hidden md:block ${
-                            event.type === 'hotel' ? 'bg-blue-500' : 
-                            event.type === 'activity' ? 'bg-emerald-500' : 'bg-orange-500'
-                          }`} />
-                          
-                          <div className="flex justify-between items-start mb-2">
-                            <h4 className="text-lg font-bold">{event.activity}</h4>
-                            <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded ${
-                              event.type === 'hotel' ? 'bg-blue-100 text-blue-600' : 
-                              event.type === 'activity' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
-                            }`}>
-                              {event.type}
-                            </span>
-                          </div>
-                          <p className="text-stone-500 text-sm">{event.description}</p>
-                          <div className="md:hidden mt-2 font-mono text-xs text-stone-400">
-                            {event.time}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              
-              {itineraryData.length === 0 && (
-                <div className="text-center py-24">
-                  <Sparkles size={48} className="mx-auto text-stone-200 mb-4" />
-                  <p className="text-stone-400">No itinerary generated yet. Go to Summary and click "Finalize Trip Planner".</p>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -511,15 +582,15 @@ export default function App() {
         )}
       </main>
 
-      {/* Add Item Modal */}
+      {/* Modal */}
       <AnimatePresence>
-        {isAdding && (
+        {modalItem && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }}
-              onClick={() => setIsAdding(null)}
+              onClick={() => setModalItem(null)}
               className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
             />
             <motion.div 
@@ -529,11 +600,11 @@ export default function App() {
               className="relative bg-white w-full max-w-lg rounded-3xl p-8 shadow-2xl"
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl font-bold">Add {isAdding.charAt(0).toUpperCase() + isAdding.slice(1)}</h3>
-                <div className={`w-10 h-10 flex items-center justify-center ${getItemStyle(isAdding)}`}>
-                  {isAdding === 'hotel' && <Calendar size={20} />}
-                  {isAdding === 'activity' && <MapPin size={20} />}
-                  {isAdding === 'eating' && <Clock size={20} />}
+                <h3 className="text-2xl font-bold">{modalItem.id ? 'Edit' : 'Add'} {modalItem.type.charAt(0).toUpperCase() + modalItem.type.slice(1)}</h3>
+                <div className={`w-10 h-10 flex items-center justify-center ${getItemStyle(modalItem.type)}`}>
+                  {modalItem.type === 'hotel' && <Calendar size={20} />}
+                  {modalItem.type === 'activity' && <MapPin size={20} />}
+                  {modalItem.type === 'eating' && <Clock size={20} />}
                 </div>
               </div>
 
@@ -543,8 +614,8 @@ export default function App() {
                   <input 
                     autoFocus
                     type="text" 
-                    value={newItem.name}
-                    onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                    value={modalItem.name}
+                    onChange={(e) => setModalItem({ ...modalItem, name: e.target.value })}
                     className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
                     placeholder="e.g. Hotel Arts Barcelona"
                   />
@@ -552,40 +623,49 @@ export default function App() {
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Notes</label>
                   <textarea 
-                    value={newItem.notes}
-                    onChange={(e) => setNewItem({ ...newItem, notes: e.target.value })}
+                    value={modalItem.notes}
+                    onChange={(e) => setModalItem({ ...modalItem, notes: e.target.value })}
                     className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none h-24"
                     placeholder="Why do we like this?"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Role</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Date</label>
                     <input 
-                      type="text" 
-                      value={newItem.role}
-                      onChange={(e) => setNewItem({ ...newItem, role: e.target.value })}
+                      type="date" 
+                      value={modalItem.date || ''}
+                      onChange={(e) => setModalItem({ ...modalItem, date: e.target.value })}
                       className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
-                      placeholder="Who's booking?"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Cost (€)</label>
                     <input 
                       type="number" 
-                      value={newItem.cost}
-                      onChange={(e) => setNewItem({ ...newItem, cost: Number(e.target.value) })}
+                      value={modalItem.cost}
+                      onChange={(e) => setModalItem({ ...modalItem, cost: Number(e.target.value) })}
                       className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
                       placeholder="0"
                     />
                   </div>
                 </div>
                 <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Role</label>
+                  <input 
+                    type="text" 
+                    value={modalItem.role}
+                    onChange={(e) => setModalItem({ ...modalItem, role: e.target.value })}
+                    className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
+                    placeholder="Who's booking?"
+                  />
+                </div>
+                <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Link</label>
                   <input 
                     type="text" 
-                    value={newItem.link}
-                    onChange={(e) => setNewItem({ ...newItem, link: e.target.value })}
+                    value={modalItem.link}
+                    onChange={(e) => setModalItem({ ...modalItem, link: e.target.value })}
                     className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
                     placeholder="Booking.com, Instagram, etc."
                   />
@@ -594,16 +674,16 @@ export default function App() {
 
               <div className="flex gap-3 mt-8">
                 <button 
-                  onClick={() => setIsAdding(null)}
+                  onClick={() => setModalItem(null)}
                   className="flex-1 px-6 py-3 bg-stone-100 text-stone-600 rounded-xl font-bold hover:bg-stone-200 transition-colors"
                 >
                   Cancel
                 </button>
                 <button 
-                  onClick={handleAddItem}
+                  onClick={handleSaveModalItem}
                   className="flex-1 px-6 py-3 bg-stone-900 text-white rounded-xl font-bold hover:bg-stone-800 transition-colors"
                 >
-                  Add Item
+                  {modalItem.id ? 'Save Changes' : 'Add Item'}
                 </button>
               </div>
             </motion.div>
