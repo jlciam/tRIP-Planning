@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "path";
+import fs from "fs";
 
 const db = new Database("trip.db");
 
@@ -34,6 +35,49 @@ try {
   db.prepare("ALTER TABLE trip_items ADD COLUMN location TEXT").run();
 } catch (e) {
   // Column probably already exists
+}
+
+// Seeding logic: Load from seed.json if DB is empty
+const itemCount = (db.prepare("SELECT COUNT(*) as count FROM trip_items").get() as any).count;
+const configCount = (db.prepare("SELECT COUNT(*) as count FROM trip_config").get() as any).count;
+
+if (itemCount === 0 && configCount === 0) {
+  const seedPath = path.join(process.cwd(), "seed.json");
+  if (fs.existsSync(seedPath)) {
+    try {
+      const seedData = JSON.parse(fs.readFileSync(seedPath, "utf8"));
+      if (seedData.items) {
+        const insertItem = db.prepare(`
+          INSERT INTO trip_items (id, type, name, notes, link, role, cost, chosen, date, time, location)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const item of seedData.items) {
+          insertItem.run(
+            item.id, 
+            item.type, 
+            item.name, 
+            item.notes, 
+            item.link, 
+            item.role, 
+            item.cost, 
+            item.chosen ? 1 : 0, 
+            item.date, 
+            item.time, 
+            item.location
+          );
+        }
+      }
+      if (seedData.config) {
+        const insertConfig = db.prepare("INSERT INTO trip_config (key, value) VALUES (?, ?)");
+        for (const [key, value] of Object.entries(seedData.config)) {
+          insertConfig.run(key, value);
+        }
+      }
+      console.log("Database seeded from seed.json");
+    } catch (err) {
+      console.error("Failed to seed database:", err);
+    }
+  }
 }
 
 const app = express();
@@ -75,6 +119,13 @@ app.post("/api/config", (req, res) => {
   db.prepare("INSERT OR REPLACE INTO trip_config (key, value) VALUES (?, ?)").run(key, value);
   broadcast({ type: "UPDATE_CONFIG" });
   res.json({ success: true });
+});
+
+app.get("/api/export", (req, res) => {
+  const items = db.prepare("SELECT * FROM trip_items").all();
+  const config = db.prepare("SELECT * FROM trip_config").all();
+  const configMap = config.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {});
+  res.json({ items, config: configMap });
 });
 
 // WebSocket logic

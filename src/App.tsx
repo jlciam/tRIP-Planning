@@ -18,7 +18,8 @@ import {
   ChevronRight,
   MapPin,
   Clock,
-  MessageSquare
+  MessageSquare,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -192,6 +193,46 @@ export default function App() {
   const saveItinerary = async () => {
     await saveConfig('itinerary', JSON.stringify(itineraryData));
     setEditingEvent(null);
+  };
+
+  const downloadBackup = async () => {
+    const res = await fetch('/api/export');
+    const data = await res.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'seed.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleMapsLinkChange = (url: string) => {
+    if (!modalItem) return;
+    
+    let updates: Partial<TripItem> = { link: url };
+    
+    try {
+      const decodedUrl = decodeURIComponent(url);
+      
+      // Extract place name from /place/Name/@... or /search/Name/@...
+      const placeMatch = decodedUrl.match(/\/(?:place|search)\/([^\/@\?]+)/);
+      if (placeMatch && placeMatch[1]) {
+        const name = placeMatch[1].replace(/\+/g, ' ');
+        // If the name is currently empty or generic, update it
+        if (!modalItem.name || modalItem.name === 'New Item') {
+          updates.name = name;
+        }
+        // If location is empty, use the name as a hint
+        if (!modalItem.location) {
+          updates.location = name;
+        }
+      }
+    } catch (e) {
+      // Ignore parsing errors
+    }
+    
+    setModalItem({ ...modalItem, ...updates });
   };
 
   return (
@@ -510,6 +551,13 @@ export default function App() {
                 <h2 className="text-3xl font-bold">Trip Summary</h2>
                 <p className="text-stone-500">Overview of chosen items and ready to finalize.</p>
               </div>
+              <button 
+                onClick={downloadBackup}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-xl hover:bg-stone-50 transition-colors text-sm font-medium"
+                title="Download data as seed.json to persist across re-publishes"
+              >
+                <Download size={18} /> Backup Data
+              </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -733,6 +781,18 @@ export default function App() {
               </div>
 
               <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2 flex items-center gap-2">
+                    <MapPin size={12} /> Google Maps Link (Auto-fill)
+                  </label>
+                  <input 
+                    type="text" 
+                    value={modalItem.link}
+                    onChange={(e) => handleMapsLinkChange(e.target.value)}
+                    className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none text-sm"
+                    placeholder="Paste Google Maps URL here..."
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Name</label>
                   <input 
