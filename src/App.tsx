@@ -31,8 +31,17 @@ export default function App() {
   const [config, setConfig] = useState<TripConfig>({});
   const [modalItem, setModalItem] = useState<TripItem | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [itineraryData, setItineraryData] = useState<any[]>([]);
   const [editingEvent, setEditingEvent] = useState<{ dayIdx: number, eventIdx: number } | null>(null);
   const [activeTab, setActiveTab] = useState<'draft' | 'planner' | 'summary' | 'costs' | 'final'>('draft');
+
+  useEffect(() => {
+    try {
+      setItineraryData(JSON.parse(config.itinerary || '[]'));
+    } catch {
+      setItineraryData([]);
+    }
+  }, [config.itinerary]);
 
   useEffect(() => {
     fetchItems();
@@ -106,9 +115,12 @@ export default function App() {
         We are planning a trip to ${config.location || 'Barcelona'} from ${config.startDate || 'unknown'} to ${config.endDate || 'unknown'}.
         Our budget is ${config.budget || 'flexible'}.
         We have already chosen these items:
-        ${JSON.stringify(chosenItems.map(i => ({ name: i.name, type: i.type, notes: i.notes, location: i.location })))}
+        ${JSON.stringify(chosenItems.map(i => ({ name: i.name, type: i.type, notes: i.notes, location: i.location, date: i.date, time: i.time })))}
         
         Please create a detailed daily itinerary for ${config.location || 'Barcelona'}. 
+        
+        CRITICAL INSTRUCTION: For any items in the list above that already have a "date" or "time" specified, you MUST place them exactly on that date and at that time in the itinerary. Do not move them.
+        
         Fill in gaps with authentic suggestions (hidden gems, local favorites) specifically for ${config.location || 'Barcelona'}.
         Ensure a good mix of activities, rest, and dining.
         Format the response as a JSON array of days, where each day has a date and a list of events with time, activity, and type (hotel, activity, eating).
@@ -163,13 +175,24 @@ export default function App() {
 
   const totalCost = useMemo(() => items.reduce((sum, item) => sum + (item.chosen ? item.cost : 0), 0), [items]);
 
-  const itineraryData = useMemo(() => {
-    try {
-      return JSON.parse(config.itinerary || '[]');
-    } catch {
-      return [];
-    }
-  }, [config.itinerary]);
+  const handleUpdateItinerary = (dayIdx: number, eventIdx: number, field: string, value: string) => {
+    const newItinerary = itineraryData.map((day, dIdx) => {
+      if (dIdx !== dayIdx) return day;
+      return {
+        ...day,
+        events: day.events.map((event: any, eIdx: number) => {
+          if (eIdx !== eventIdx) return event;
+          return { ...event, [field]: value };
+        })
+      };
+    });
+    setItineraryData(newItinerary);
+  };
+
+  const saveItinerary = async () => {
+    await saveConfig('itinerary', JSON.stringify(itineraryData));
+    setEditingEvent(null);
+  };
 
   return (
     <div className="min-h-screen bg-stone-50 font-sans text-stone-900">
@@ -393,23 +416,19 @@ export default function App() {
                                     <input 
                                       type="text" 
                                       value={event.activity} 
-                                      onChange={(e) => {
-                                        const newItinerary = [...itineraryData];
-                                        newItinerary[idx].events[eIdx].activity = e.target.value;
-                                        saveConfig('itinerary', JSON.stringify(newItinerary));
-                                      }}
-                                      className="w-full p-1 text-lg font-bold border-b border-stone-300 outline-none"
+                                      onChange={(e) => handleUpdateItinerary(idx, eIdx, 'activity', e.target.value)}
+                                      className="w-full p-1 text-lg font-bold border-b border-stone-300 outline-none focus:border-stone-900"
+                                      autoFocus
                                     />
-                                    <input 
-                                      type="text" 
-                                      value={event.time} 
-                                      onChange={(e) => {
-                                        const newItinerary = [...itineraryData];
-                                        newItinerary[idx].events[eIdx].time = e.target.value;
-                                        saveConfig('itinerary', JSON.stringify(newItinerary));
-                                      }}
-                                      className="w-full p-1 text-xs font-mono border-b border-stone-300 outline-none"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                      <Clock size={12} className="text-stone-400" />
+                                      <input 
+                                        type="text" 
+                                        value={event.time} 
+                                        onChange={(e) => handleUpdateItinerary(idx, eIdx, 'time', e.target.value)}
+                                        className="w-full p-1 text-xs font-mono border-b border-stone-300 outline-none focus:border-stone-900"
+                                      />
+                                    </div>
                                   </div>
                                 ) : (
                                   <>
@@ -425,8 +444,9 @@ export default function App() {
                               </div>
                               <div className="flex gap-2">
                                 <button 
-                                  onClick={() => setEditingEvent(editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? null : { dayIdx: idx, eventIdx: eIdx })}
+                                  onClick={() => editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? saveItinerary() : setEditingEvent({ dayIdx: idx, eventIdx: eIdx })}
                                   className={`p-1 transition-colors ${editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? 'text-emerald-600' : 'text-stone-300 hover:text-stone-600'}`}
+                                  title={editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? "Save Changes" : "Edit Event"}
                                 >
                                   {editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? <CheckCircle2 size={16} /> : <MessageSquare size={16} />}
                                 </button>

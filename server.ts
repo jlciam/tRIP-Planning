@@ -19,7 +19,8 @@ db.exec(`
     cost REAL,
     chosen INTEGER DEFAULT 0,
     date TEXT,
-    time TEXT
+    time TEXT,
+    location TEXT
   );
   
   CREATE TABLE IF NOT EXISTS trip_config (
@@ -27,6 +28,13 @@ db.exec(`
     value TEXT
   );
 `);
+
+// Migration: Add location column if it doesn't exist
+try {
+  db.prepare("ALTER TABLE trip_items ADD COLUMN location TEXT").run();
+} catch (e) {
+  // Column probably already exists
+}
 
 const app = express();
 const server = createServer(app);
@@ -41,11 +49,11 @@ app.get("/api/items", (req, res) => {
 });
 
 app.post("/api/items", (req, res) => {
-  const { id, type, name, notes, link, role, cost, chosen, date, time } = req.body;
+  const { id, type, name, notes, link, role, cost, chosen, date, time, location } = req.body;
   db.prepare(`
-    INSERT OR REPLACE INTO trip_items (id, type, name, notes, link, role, cost, chosen, date, time)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, type, name, notes, link, role, cost, chosen ? 1 : 0, date, time);
+    INSERT OR REPLACE INTO trip_items (id, type, name, notes, link, role, cost, chosen, date, time, location)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, type, name, notes, link, role, cost, chosen ? 1 : 0, date, time, location);
   broadcast({ type: "UPDATE_ITEMS" });
   res.json({ success: true });
 });
