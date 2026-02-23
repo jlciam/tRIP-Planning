@@ -19,13 +19,172 @@ import {
   MapPin,
   Clock,
   MessageSquare,
-  Download
+  Download,
+  Upload,
+  GripVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { GoogleGenAI, Type } from "@google/genai";
 import { TripItem, ItemType, TripConfig } from './types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+const getDatesInRange = (startDate: string, endDate: string) => {
+  const dates = [];
+  try {
+    let curr = new Date(startDate);
+    const end = new Date(endDate);
+    let count = 0;
+    while (curr <= end && count < 100) {
+      dates.push(curr.toISOString().split('T')[0]);
+      curr.setDate(curr.getDate() + 1);
+      count++;
+    }
+  } catch (e) {
+    console.error("Invalid dates for range", e);
+  }
+  return dates;
+};
+
+function SortableEvent({ event, idx, eIdx, editingEvent, handleUpdateItinerary, saveItinerary, setEditingEvent, setModalItem, items, day, itineraryData, saveConfig, existingItem, getItemStyle }: any) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: event.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 1,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex flex-col md:flex-row gap-4 md:gap-12 items-start group">
+      <div className="w-20 text-right font-mono text-sm text-stone-400 pt-4 hidden md:block">
+        {event.time}
+      </div>
+      <div className={`flex-1 bg-white p-6 rounded-2xl border shadow-sm relative transition-all ${existingItem?.chosen ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-stone-200'}`}>
+        {/* Dot on line */}
+        <div className={`absolute -left-[53px] top-8 w-4 h-4 rounded-full border-4 border-stone-50 hidden md:block ${
+          event.type === 'hotel' ? 'bg-blue-500' : 
+          event.type === 'activity' ? 'bg-emerald-500' : 'bg-orange-500'
+        }`} />
+        
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex-1">
+            {editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? (
+              <div className="space-y-2 mb-2">
+                <input 
+                  type="text" 
+                  value={event.activity} 
+                  onChange={(e) => handleUpdateItinerary(idx, eIdx, 'activity', e.target.value)}
+                  className="w-full p-1 text-lg font-bold border-b border-stone-300 outline-none focus:border-stone-900"
+                  autoFocus
+                />
+                <div className="flex items-center gap-2">
+                  <Clock size={12} className="text-stone-400" />
+                  <input 
+                    type="text" 
+                    value={event.time} 
+                    onChange={(e) => handleUpdateItinerary(idx, eIdx, 'time', e.target.value)}
+                    className="w-full p-1 text-xs font-mono border-b border-stone-300 outline-none focus:border-stone-900"
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <h4 className="text-lg font-bold">{event.activity}</h4>
+                <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded ${
+                  event.type === 'hotel' ? 'bg-blue-100 text-blue-600' : 
+                  event.type === 'activity' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
+                }`}>
+                  {event.type}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <div {...attributes} {...listeners} className="p-1 text-stone-300 hover:text-stone-600 cursor-grab active:cursor-grabbing transition-colors" title="Drag to reorder or move to another day">
+              <GripVertical size={16} />
+            </div>
+            <button 
+              onClick={() => editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? saveItinerary() : setEditingEvent({ dayIdx: idx, eventIdx: eIdx })}
+              className={`p-1 transition-colors ${editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? 'text-emerald-600' : 'text-stone-300 hover:text-stone-600'}`}
+              title={editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? "Save Changes" : "Edit Event"}
+            >
+              {editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? <CheckCircle2 size={16} /> : <MessageSquare size={16} />}
+            </button>
+            <button 
+              onClick={() => {
+                if (existingItem) {
+                  setModalItem({
+                    ...existingItem,
+                    chosen: true,
+                    date: existingItem.date || day.date,
+                    time: existingItem.time || event.time
+                  });
+                } else {
+                  setModalItem({
+                    id: '',
+                    type: event.type as ItemType,
+                    name: event.activity,
+                    notes: event.description,
+                    link: '',
+                    role: '',
+                    cost: 0,
+                    chosen: true,
+                    date: day.date,
+                    time: event.time
+                  });
+                }
+              }}
+              className={`p-1 transition-colors ${existingItem?.chosen ? 'text-emerald-600' : 'text-stone-300 hover:text-stone-600'}`}
+            >
+              {existingItem?.chosen ? <CheckCircle2 size={16} /> : <Plus size={16} />}
+            </button>
+            <button 
+              onClick={() => {
+                const newItinerary = [...itineraryData];
+                newItinerary[idx].events.splice(eIdx, 1);
+                if (newItinerary[idx].events.length === 0) newItinerary.splice(idx, 1);
+                saveConfig('itinerary', JSON.stringify(newItinerary));
+              }}
+              className="p-1 text-stone-300 hover:text-red-500 transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+        <p className="text-stone-500 text-sm">{event.description}</p>
+        <div className="md:hidden mt-2 font-mono text-xs text-stone-400">
+          {event.time}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [items, setItems] = useState<TripItem[]>([]);
@@ -38,11 +197,51 @@ export default function App() {
 
   useEffect(() => {
     try {
-      setItineraryData(JSON.parse(config.itinerary || '[]'));
+      let data = JSON.parse(config.itinerary || '[]');
+      
+      // 1. Ensure all dates in range exist
+      if (config.startDate && config.endDate) {
+        const range = getDatesInRange(config.startDate, config.endDate);
+        range.forEach(date => {
+          if (!data.find((d: any) => d.date === date)) {
+            data.push({ date, events: [] });
+          }
+        });
+      }
+
+      // 2. Add chosen items with dates that aren't in the itinerary
+      items.filter(item => item.chosen && item.date).forEach(item => {
+        const alreadyIn = data.some((d: any) => d.events.some((e: any) => e.activity === item.name));
+        if (!alreadyIn) {
+          let day = data.find((d: any) => d.date === item.date);
+          if (!day) {
+            day = { date: item.date, events: [] };
+            data.push(day);
+          }
+          day.events.push({
+            id: item.id || Math.random().toString(36).substr(2, 9),
+            time: item.time || '12:00',
+            activity: item.name,
+            type: item.type,
+            description: item.notes
+          });
+        }
+      });
+
+      data.sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+      const dataWithIds = data.map((day: any) => ({
+        ...day,
+        events: day.events.map((event: any) => ({
+          ...event,
+          id: event.id || Math.random().toString(36).substr(2, 9)
+        }))
+      }));
+      setItineraryData(dataWithIds);
     } catch {
       setItineraryData([]);
     }
-  }, [config.itinerary]);
+  }, [config.itinerary, config.startDate, config.endDate, items]);
 
   useEffect(() => {
     fetchItems();
@@ -73,6 +272,19 @@ export default function App() {
   };
 
   const saveItem = async (item: TripItem) => {
+    // Bidirectional sync: If name changed, update itinerary
+    const oldItem = items.find(i => i.id === item.id);
+    if (oldItem && oldItem.name !== item.name) {
+      const newItinerary = itineraryData.map(day => ({
+        ...day,
+        events: day.events.map((ev: any) => 
+          ev.activity === oldItem.name ? { ...ev, activity: item.name } : ev
+        )
+      }));
+      setItineraryData(newItinerary);
+      saveConfig('itinerary', JSON.stringify(newItinerary));
+    }
+
     await fetch('/api/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -157,7 +369,14 @@ export default function App() {
       });
 
       const itinerary = JSON.parse(response.text || '[]');
-      await saveConfig('itinerary', JSON.stringify(itinerary));
+      const itineraryWithIds = itinerary.map((day: any) => ({
+        ...day,
+        events: day.events.map((event: any) => ({
+          ...event,
+          id: Math.random().toString(36).substr(2, 9)
+        }))
+      }));
+      await saveConfig('itinerary', JSON.stringify(itineraryWithIds));
       setActiveTab('planner');
     } catch (error) {
       console.error("Failed to generate itinerary:", error);
@@ -177,6 +396,8 @@ export default function App() {
   const totalCost = useMemo(() => items.reduce((sum, item) => sum + (item.chosen ? item.cost : 0), 0), [items]);
 
   const handleUpdateItinerary = (dayIdx: number, eventIdx: number, field: string, value: string) => {
+    const oldEvent = itineraryData[dayIdx].events[eventIdx];
+    
     const newItinerary = itineraryData.map((day, dIdx) => {
       if (dIdx !== dayIdx) return day;
       return {
@@ -188,23 +409,168 @@ export default function App() {
       };
     });
     setItineraryData(newItinerary);
+
+    // Bidirectional sync: If we renamed the activity or changed time, update the linked item
+    if (field === 'activity' || field === 'time') {
+      const item = items.find(i => i.name === oldEvent.activity);
+      if (item) {
+        const updates: any = { ...item };
+        if (field === 'activity') updates.name = value;
+        if (field === 'time') updates.time = value;
+        saveItem(updates);
+      }
+    }
   };
 
   const saveItinerary = async () => {
     await saveConfig('itinerary', JSON.stringify(itineraryData));
     setEditingEvent(null);
+    
+    // Sync items in the itinerary to the items table
+    for (const day of itineraryData) {
+      for (const event of day.events) {
+        const item = items.find(i => i.name === event.activity);
+        if (item) {
+          if (item.date !== day.date || item.time !== event.time || !item.chosen) {
+            await saveItem({
+              ...item,
+              date: day.date,
+              time: event.time,
+              chosen: true
+            });
+          }
+        }
+      }
+    }
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    let activeDayIdx = -1;
+    let activeEventIdx = -1;
+    let overDayIdx = -1;
+    let overEventIdx = -1;
+
+    itineraryData.forEach((day, dIdx) => {
+      day.events.forEach((ev: any, eIdx: number) => {
+        if (ev.id === activeId) {
+          activeDayIdx = dIdx;
+          activeEventIdx = eIdx;
+        }
+        if (ev.id === overId) {
+          overDayIdx = dIdx;
+          overEventIdx = eIdx;
+        }
+      });
+    });
+
+    if (activeDayIdx !== -1 && overDayIdx !== -1) {
+      const newItinerary = [...itineraryData];
+      const [movedEvent] = newItinerary[activeDayIdx].events.splice(activeEventIdx, 1);
+      
+      // If moving within the same day
+      if (activeDayIdx === overDayIdx) {
+        newItinerary[overDayIdx].events.splice(overEventIdx, 0, movedEvent);
+      } else {
+        // Moving to a different day
+        newItinerary[overDayIdx].events.splice(overEventIdx, 0, movedEvent);
+      }
+      
+      setItineraryData(newItinerary);
+      saveConfig('itinerary', JSON.stringify(newItinerary));
+
+      // Sync the moved item's date if it exists
+      const item = items.find(i => i.name === movedEvent.activity);
+      if (item) {
+        saveItem({
+          ...item,
+          date: newItinerary[overDayIdx].date,
+          time: movedEvent.time,
+          chosen: true
+        });
+      }
+    }
   };
 
   const downloadBackup = async () => {
     const res = await fetch('/api/export');
     const data = await res.json();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    
+    // Ensure the exported items have the specific values decided in the Planner
+    const syncedItems = data.items.map((item: any) => {
+      let foundEvent: any = null;
+      let foundDate: string = '';
+      
+      itineraryData.forEach(day => {
+        const ev = day.events.find((e: any) => e.activity === item.name);
+        if (ev) {
+          foundEvent = ev;
+          foundDate = day.date;
+        }
+      });
+      
+      if (foundEvent) {
+        return {
+          ...item,
+          date: foundDate || item.date,
+          time: foundEvent.time || item.time,
+          chosen: true
+        };
+      }
+      return item;
+    });
+
+    const blob = new Blob([JSON.stringify({ ...data, items: syncedItems }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = 'seed.json';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleImportSeed = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        const res = await fetch('/api/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          alert('Seed data loaded successfully!');
+          fetchItems();
+          fetchConfig();
+        } else {
+          alert('Failed to load seed data.');
+        }
+      } catch (err) {
+        console.error('Failed to parse seed file:', err);
+        alert('Invalid seed file format.');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleMapsLinkChange = (url: string) => {
@@ -269,7 +635,15 @@ export default function App() {
         {activeTab === 'draft' && (
           <div className="space-y-8">
             <section className="bg-white rounded-3xl p-8 border border-stone-200 shadow-sm">
-              <h2 className="text-2xl font-bold mb-6">Trip Setup</h2>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">Trip Setup</h2>
+                <div className="flex gap-2">
+                  <label className="flex items-center gap-2 px-4 py-2 bg-stone-100 text-stone-600 rounded-xl hover:bg-stone-200 transition-colors text-sm font-medium cursor-pointer">
+                    <Upload size={18} /> Load Previous Seed
+                    <input type="file" accept=".json" onChange={handleImportSeed} className="hidden" />
+                  </label>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Destination</label>
@@ -424,122 +798,62 @@ export default function App() {
               </div>
             </div>
 
-            <div className="space-y-12 relative">
-              {/* Vertical Line */}
-              <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-stone-200 hidden md:block" />
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="space-y-12 relative">
+                {/* Vertical Line */}
+                <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-stone-200 hidden md:block" />
 
-              {itineraryData.map((day: any, idx: number) => (
-                <div key={idx} className="relative">
-                  <div className="md:ml-20 mb-6">
-                    <h3 className="text-xl font-bold bg-stone-900 text-white inline-block px-4 py-1 rounded-lg shadow-lg">
-                      {day.date}
-                    </h3>
+                {itineraryData.map((day: any, idx: number) => (
+                  <div key={idx} className="relative">
+                    <div className="md:ml-20 mb-6">
+                      <h3 className="text-xl font-bold bg-stone-900 text-white inline-block px-4 py-1 rounded-lg shadow-lg">
+                        {day.date}
+                      </h3>
+                    </div>
+                    <SortableContext 
+                      items={day.events.map((e: any) => e.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-6">
+                        {day.events.map((event: any, eIdx: number) => {
+                          const existingItem = items.find(i => i.name === event.activity);
+                          return (
+                            <SortableEvent 
+                              key={event.id}
+                              event={event}
+                              idx={idx}
+                              eIdx={eIdx}
+                              editingEvent={editingEvent}
+                              handleUpdateItinerary={handleUpdateItinerary}
+                              saveItinerary={saveItinerary}
+                              setEditingEvent={setEditingEvent}
+                              setModalItem={setModalItem}
+                              items={items}
+                              day={day}
+                              itineraryData={itineraryData}
+                              saveConfig={saveConfig}
+                              existingItem={existingItem}
+                              getItemStyle={getItemStyle}
+                            />
+                          );
+                        })}
+                      </div>
+                    </SortableContext>
                   </div>
-                  <div className="space-y-6">
-                    {day.events.map((event: any, eIdx: number) => {
-                      const existingItem = items.find(i => i.name === event.activity);
-                      return (
-                        <div key={eIdx} className="flex flex-col md:flex-row gap-4 md:gap-12 items-start">
-                          <div className="w-20 text-right font-mono text-sm text-stone-400 pt-4 hidden md:block">
-                            {event.time}
-                          </div>
-                          <div className={`flex-1 bg-white p-6 rounded-2xl border shadow-sm relative transition-all ${existingItem?.chosen ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-stone-200'}`}>
-                            {/* Dot on line */}
-                            <div className={`absolute -left-[53px] top-8 w-4 h-4 rounded-full border-4 border-stone-50 hidden md:block ${
-                              event.type === 'hotel' ? 'bg-blue-500' : 
-                              event.type === 'activity' ? 'bg-emerald-500' : 'bg-orange-500'
-                            }`} />
-                            
-                            <div className="flex justify-between items-start mb-2">
-                              <div className="flex-1">
-                                {editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? (
-                                  <div className="space-y-2 mb-2">
-                                    <input 
-                                      type="text" 
-                                      value={event.activity} 
-                                      onChange={(e) => handleUpdateItinerary(idx, eIdx, 'activity', e.target.value)}
-                                      className="w-full p-1 text-lg font-bold border-b border-stone-300 outline-none focus:border-stone-900"
-                                      autoFocus
-                                    />
-                                    <div className="flex items-center gap-2">
-                                      <Clock size={12} className="text-stone-400" />
-                                      <input 
-                                        type="text" 
-                                        value={event.time} 
-                                        onChange={(e) => handleUpdateItinerary(idx, eIdx, 'time', e.target.value)}
-                                        className="w-full p-1 text-xs font-mono border-b border-stone-300 outline-none focus:border-stone-900"
-                                      />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <h4 className="text-lg font-bold">{event.activity}</h4>
-                                    <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded ${
-                                      event.type === 'hotel' ? 'bg-blue-100 text-blue-600' : 
-                                      event.type === 'activity' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
-                                    }`}>
-                                      {event.type}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                              <div className="flex gap-2">
-                                <button 
-                                  onClick={() => editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? saveItinerary() : setEditingEvent({ dayIdx: idx, eventIdx: eIdx })}
-                                  className={`p-1 transition-colors ${editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? 'text-emerald-600' : 'text-stone-300 hover:text-stone-600'}`}
-                                  title={editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? "Save Changes" : "Edit Event"}
-                                >
-                                  {editingEvent?.dayIdx === idx && editingEvent?.eventIdx === eIdx ? <CheckCircle2 size={16} /> : <MessageSquare size={16} />}
-                                </button>
-                                <button 
-                                  onClick={() => setModalItem(existingItem || {
-                                    id: '',
-                                    type: event.type as ItemType,
-                                    name: event.activity,
-                                    notes: event.description,
-                                    link: '',
-                                    role: '',
-                                    cost: 0,
-                                    chosen: true,
-                                    date: day.date,
-                                    time: event.time
-                                  })}
-                                  className={`p-1 transition-colors ${existingItem?.chosen ? 'text-emerald-600' : 'text-stone-300 hover:text-stone-600'}`}
-                                >
-                                  {existingItem?.chosen ? <CheckCircle2 size={16} /> : <Plus size={16} />}
-                                </button>
-                                <button 
-                                  onClick={() => {
-                                    const newItinerary = [...itineraryData];
-                                    newItinerary[idx].events.splice(eIdx, 1);
-                                    if (newItinerary[idx].events.length === 0) newItinerary.splice(idx, 1);
-                                    saveConfig('itinerary', JSON.stringify(newItinerary));
-                                  }}
-                                  className="p-1 text-stone-300 hover:text-red-500 transition-colors"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-stone-500 text-sm">{event.description}</p>
-                            <div className="md:hidden mt-2 font-mono text-xs text-stone-400">
-                              {event.time}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                ))}
+                
+                {itineraryData.length === 0 && (
+                  <div className="text-center py-24">
+                    <Sparkles size={48} className="mx-auto text-stone-200 mb-4" />
+                    <p className="text-stone-400">No itinerary generated yet. Click "Re-Generate AI Plan" to get started!</p>
                   </div>
-                </div>
-              ))}
-              
-              {itineraryData.length === 0 && (
-                <div className="text-center py-24">
-                  <Sparkles size={48} className="mx-auto text-stone-200 mb-4" />
-                  <p className="text-stone-400">No itinerary generated yet. Click "Re-Generate AI Plan" to get started!</p>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            </DndContext>
           </div>
         )}
 
@@ -678,9 +992,17 @@ export default function App() {
                 <h2 className="text-4xl font-black tracking-tighter uppercase italic">Final.final</h2>
                 <p className="text-stone-500 font-mono text-xs">LOCKED • READ-ONLY DASHBOARD</p>
               </div>
-              <div className="text-right">
-                <div className="text-xs font-bold text-stone-400 uppercase tracking-widest">Barcelona Trip</div>
-                <div className="text-lg font-mono">{config.startDate} — {config.endDate}</div>
+              <div className="flex flex-col items-end gap-4">
+                <button 
+                  onClick={downloadBackup}
+                  className="flex items-center gap-2 px-6 py-3 bg-stone-900 text-white rounded-2xl hover:bg-stone-800 transition-all shadow-xl hover:scale-105 active:scale-95 text-sm font-bold uppercase tracking-widest"
+                >
+                  <Download size={20} /> Export Final Seed
+                </button>
+                <div className="text-right">
+                  <div className="text-xs font-bold text-stone-400 uppercase tracking-widest">Barcelona Trip</div>
+                  <div className="text-lg font-mono">{config.startDate} — {config.endDate}</div>
+                </div>
               </div>
             </div>
 

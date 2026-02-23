@@ -19,4 +19,5 @@ export interface TripConfig {
   endDate?: string;
   budget?: string;
   location?: string;
+  itinerary?: string;
 }

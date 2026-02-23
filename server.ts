@@ -84,7 +84,8 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // API Routes
 app.get("/api/items", (req, res) => {
@@ -126,6 +127,54 @@ app.get("/api/export", (req, res) => {
   const config = db.prepare("SELECT * FROM trip_config").all();
   const configMap = config.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {});
   res.json({ items, config: configMap });
+});
+
+app.post("/api/import", (req, res) => {
+  const { items, config } = req.body;
+  
+  const transaction = db.transaction(() => {
+    db.prepare("DELETE FROM trip_items").run();
+    db.prepare("DELETE FROM trip_config").run();
+    
+    if (items) {
+      const insertItem = db.prepare(`
+        INSERT INTO trip_items (id, type, name, notes, link, role, cost, chosen, date, time, location)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const item of items) {
+        insertItem.run(
+          item.id, 
+          item.type, 
+          item.name, 
+          item.notes, 
+          item.link, 
+          item.role, 
+          item.cost, 
+          item.chosen ? 1 : 0, 
+          item.date, 
+          item.time, 
+          item.location
+        );
+      }
+    }
+    
+    if (config) {
+      const insertConfig = db.prepare("INSERT INTO trip_config (key, value) VALUES (?, ?)");
+      for (const [key, value] of Object.entries(config)) {
+        insertConfig.run(key, value);
+      }
+    }
+  });
+
+  try {
+    transaction();
+    broadcast({ type: "UPDATE_ITEMS" });
+    broadcast({ type: "UPDATE_CONFIG" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Import failed:", err);
+    res.status(500).json({ error: "Import failed" });
+  }
 });
 
 // WebSocket logic
