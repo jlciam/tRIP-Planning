@@ -1156,6 +1156,17 @@ export default function App() {
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Time</label>
+                    <input 
+                      type="time" 
+                      value={modalItem.time || ''}
+                      onChange={(e) => setModalItem({ ...modalItem, time: e.target.value })}
+                      className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Cost ($)</label>
                     <input 
                       type="number" 
@@ -1165,16 +1176,16 @@ export default function App() {
                       placeholder="0"
                     />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Role</label>
-                  <input 
-                    type="text" 
-                    value={modalItem.role}
-                    onChange={(e) => setModalItem({ ...modalItem, role: e.target.value })}
-                    className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
-                    placeholder="Who's booking?"
-                  />
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Role</label>
+                    <input 
+                      type="text" 
+                      value={modalItem.role}
+                      onChange={(e) => setModalItem({ ...modalItem, role: e.target.value })}
+                      className="w-full p-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 outline-none"
+                      placeholder="Who's booking?"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">Link</label>
